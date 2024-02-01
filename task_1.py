@@ -132,9 +132,41 @@ for u, v, attr in G.edges(data=True):
     for key in attr:
         attr[key] = str(attr[key])
 
+# 创建一个新的有向图
+G_new = nx.DiGraph()
+
+# 复制节点，并使用新的标识符
+for node, data in G.nodes(data=True):
+    if data['type'] == 'actor':
+        # 对于actor节点，使用login作为新的节点id
+        G_new.add_node(data['login'], **data)
+    elif data['type'] == 'repo':
+        # 对于repo节点，使用name作为新的节点id
+        G_new.add_node(data['name'], **data)
+
+# 复制边，并使用新的source和target id
+for source, target, data in G.edges(data=True):
+    source_data = G.nodes[source]
+    target_data = G.nodes[target]
+
+    # 根据节点类型确定新的source和target id
+    if source_data['type'] == 'actor':
+        new_source_id = source_data['login']
+    else:
+        new_source_id = source_data['name']
+
+    if target_data['type'] == 'actor':
+        new_target_id = target_data['login']
+    else:
+        new_target_id = target_data['name']
+
+    # 在新图中添加边
+    G_new.add_edge(new_source_id, new_target_id, **data)
+
+# 现在G_new包含了使用login和name作为id的节点，以及相应更新的边
 # 导出到GML和Pajek格式
 gml_file_path = 'output/repo_actor_network/xlab.gml'
 pajek_file_path = 'output/repo_actor_network/xlab.net'
-nx.write_gml(G, gml_file_path)
-nx.write_pajek(G, pajek_file_path)
+nx.write_gml(G_new, gml_file_path)
+nx.write_pajek(G_new, pajek_file_path)
 print("图数据已成功导出。")
