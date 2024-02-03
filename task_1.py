@@ -107,7 +107,6 @@ for chunk in pd.read_csv(file_path, chunksize=chunksize):
         repo_id_str = str(row['repo_id'])  # 将repo_id转换为字符串
         for repo_ref in repo_refs:
             referenced_repo_name = '/'.join(repo_ref.split('/')[-2:])  # 提取完整的repo_name
-            referenced_repo_id = chunk[chunk['repo_name'] == referenced_repo_name]['repo_id'].unique()
             if referenced_repo_name in name_to_repo_id:
                 referenced_repo_id_str = name_to_repo_id[referenced_repo_name]
                 # 检查是否避免自引用且两个节点都存在于G中
@@ -162,6 +161,36 @@ for source, target, data in G.edges(data=True):
 
     # 在新图中添加边
     G_new.add_edge(new_source_id, new_target_id, **data)
+
+# TODO: 找出为什么存在自环边和不属于最大连通子图的节点，然后移出下面的“补救”代码
+# 检查并删除不属于最大连通子图的节点
+weakly_connected_components = list(nx.weakly_connected_components(G_new))
+if len(weakly_connected_components) > 1:
+    largest_component = max(weakly_connected_components, key=len)
+    other_nodes = set(G_new.nodes()) - largest_component
+
+    print("将被删除的不属于最大连通子图的节点有：")
+    for node in other_nodes:
+        print(node)
+
+    # 删除这些节点
+    G_new.remove_nodes_from(other_nodes)
+
+# 检查并删除有自环的节点
+self_loops = list(nx.selfloop_edges(G_new))
+if self_loops:
+    print("将被删除的存在自环的节点有：")
+    for u, _ in self_loops:
+        print(u)
+
+    # 删除自环边
+    G_new.remove_edges_from(self_loops)
+
+    # 如果你也想删除具有自环的节点，取消注释以下代码
+    # self_loop_nodes = {u for u, v in self_loops}
+    # G_new.remove_nodes_from(self_loop_nodes)
+
+# 现在G_new已经删除了不属于最大连通子图的节点和有自环的节点（如果你选择删除它们）
 
 # 现在G_new包含了使用login和name作为id的节点，以及相应更新的边
 # 导出到GML和Pajek格式
