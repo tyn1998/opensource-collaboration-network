@@ -5,6 +5,7 @@ import networkx as nx
 import re
 
 file_path = 'input/github_events_xlab.csv'
+# file_path = 'input/github_events_microsoft.csv'
 chunksize = 10000  # 根据您的内存限制调整
 G = nx.DiGraph()
 
@@ -123,13 +124,13 @@ mention_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_da
 repo_reference_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'repo_reference')
 print(f"总共收集到 {contribution_edges_count} 个 contribution 边、 {mention_edges_count} 个 mention 边和 {repo_reference_edges_count} 个 repo_reference 边。")
 
-# 转换所有属性为字符串类型
-for node, attr in G.nodes(data=True):
-    for key in attr:
-        attr[key] = str(attr[key])
-for u, v, attr in G.edges(data=True):
-    for key in attr:
-        attr[key] = str(attr[key])
+# # 转换所有属性为字符串类型
+# for node, attr in G.nodes(data=True):
+#     for key in attr:
+#         attr[key] = str(attr[key])
+# for u, v, attr in G.edges(data=True):
+#     for key in attr:
+#         attr[key] = str(attr[key])
 
 # 创建一个新的有向图
 G_new = nx.DiGraph()
@@ -194,8 +195,10 @@ if self_loops:
 
 # 现在G_new包含了使用login和name作为id的节点，以及相应更新的边
 # 导出到GML和Pajek格式
-gml_file_path = 'output/repo_actor_network/xlab.gml'
-pajek_file_path = 'output/repo_actor_network/xlab.net'
+gml_file_path = 'output/repo_actor_network/xlab_ra.gml'
+pajek_file_path = 'output/repo_actor_network/xlab_ra.net'
+# gml_file_path = 'output/repo_actor_network/microsoft_ra.gml'
+# pajek_file_path = 'output/repo_actor_network/microsoft_ra.net'
 nx.write_gml(G_new, gml_file_path)
 nx.write_pajek(G_new, pajek_file_path)
 print("图数据已成功导出。")
