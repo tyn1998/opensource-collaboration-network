@@ -26,6 +26,28 @@ def extract_references(body):
     return mentions, repo_refs
 
 
+def trim_graph_edges(G, max_edges=500000):
+    # 筛选贡献边
+    contribution_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d.get('type') == 'contribution']
+
+    # 如果贡献边数量超过限制，则进行削减
+    if len(contribution_edges) > max_edges:
+        # 根据权重排序边，保留权重最高的边
+        sorted_edges = sorted(contribution_edges, key=lambda x: x[2]['weight'], reverse=True)
+        edges_to_keep = set(sorted_edges[:max_edges])
+
+        # 删除不在保留列表中的边
+        for edge in contribution_edges:
+            if edge not in edges_to_keep:
+                G.remove_edge(edge[0], edge[1])
+
+        # 删除孤立节点
+        isolated_nodes = list(nx.isolates(G))
+        G.remove_nodes_from(isolated_nodes)
+
+        print(f"Graph trimmed to top {max_edges} contribution edges. Removed {len(isolated_nodes)} isolated nodes.")
+
+
 def process_github_events(project_name):
     file_path = f'input/github_events_{project_name}.csv'
     chunksize = 10000  # 根据您的内存限制调整
@@ -191,15 +213,19 @@ def process_github_events(project_name):
         # self_loop_nodes = {u for u, v in self_loops}
         # G_new.remove_nodes_from(self_loop_nodes)
 
-        # 现在G_new已经删除了不属于最大连通子图的节点和有自环的节点（如果你选择删除它们）
+    # 在导出前，根据贡献边的数量进行削减
+    trim_graph_edges(G_new)
 
-        # 导出图数据
-        gml_file_path = f'output/repo_actor_network/{project_name}_ra.gml'
-        pajek_file_path = f'output/repo_actor_network/{project_name}_ra.net'
-        nx.write_gml(G_new, gml_file_path)
-        nx.write_pajek(G_new, pajek_file_path)
-        print("图数据已成功导出。")
+    # 导出图数据
+    gml_file_path = f'output/repo_actor_network/{project_name}_ra.gml'
+    pajek_file_path = f'output/repo_actor_network/{project_name}_ra.net'
+    nx.write_gml(G_new, gml_file_path)
+    nx.write_pajek(G_new, pajek_file_path)
+    print("图数据已成功导出。")
 
-process_github_events("xlab")
-# process_github_events("k8s")
+
+# process_github_events("xlab")
+# process_github_events("k8s_202301")
+# process_github_events("apache_202301")
+process_github_events("microsoft_202301")
 # process_github_events("microsoft")
