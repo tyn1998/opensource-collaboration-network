@@ -4,49 +4,6 @@ import pandas as pd
 import networkx as nx
 import re
 
-file_path = 'input/github_events_xlab.csv'
-# file_path = 'input/github_events_microsoft.csv'
-chunksize = 10000  # 根据您的内存限制调整
-G = nx.DiGraph()
-
-# 初始化存储actors和repos信息的字典
-actors_info = {}
-repos_info = {}
-
-print("开始收集节点信息...")
-for chunk in pd.read_csv(file_path, chunksize=chunksize,
-                         usecols=['actor_id', 'actor_login', 'repo_id', 'repo_name', 'org_id', 'org_login',
-                                  'created_at']):
-    for _, row in chunk.iterrows():
-        actor_id, repo_id = str(row['actor_id']), str(row['repo_id'])
-        created_at = pd.to_datetime(row['created_at'])
-
-        # 更新actor信息，如果这是一个更晚的记录
-        if actor_id not in actors_info or created_at > actors_info[actor_id]['latest']:
-            actors_info[actor_id] = {
-                'login': row['actor_login'],
-                'latest': created_at
-            }
-
-        # 更新repo信息，如果这是一个更晚的记录
-        if repo_id not in repos_info or created_at > repos_info[repo_id]['latest']:
-            repos_info[repo_id] = {
-                'name': row['repo_name'],
-                'org_id': str(row['org_id']),
-                'org_login': row['org_login'],
-                'latest': created_at
-            }
-    print(f"已处理 {chunk.shape[0]} 行数据...")
-
-# 创建节点，不包括'latest'属性
-for actor_id, attrs in actors_info.items():
-    G.add_node(actor_id, type='actor', login=attrs['login'])
-
-for repo_id, attrs in repos_info.items():
-    G.add_node(repo_id, type='repo', name=attrs['name'], org_id=attrs['org_id'], org_login=attrs['org_login'])
-
-print(f"总共收集到 {len(actors_info)} 个独特的 actor 节点和 {len(repos_info)} 个独特的 repo 节点。")
-
 
 def determine_contribution_weight(event_type, action, pull_merged):
     weights = {
@@ -69,136 +26,180 @@ def extract_references(body):
     return mentions, repo_refs
 
 
-print("开始处理边的添加...")
-# 我们需要创建一个从 login 到 actor_id 的映射
-login_to_actor_id = {info['login']: actor_id for actor_id, info in actors_info.items()}
-# 我们需要创建一个从 repo_name 到 repo_id 的映射
-name_to_repo_id = {info['name']: repo_id for repo_id, info in repos_info.items()}
+def process_github_events(project_name):
+    file_path = f'input/github_events_{project_name}.csv'
+    chunksize = 10000  # 根据您的内存限制调整
+    G = nx.DiGraph()
 
-for chunk in pd.read_csv(file_path, chunksize=chunksize):
-    for index, row in chunk.iterrows():
-        # 在这里添加逻辑来处理每行数据，包括添加贡献类边和引用类边
-        # 确保在添加边之前，边的两端节点都已经存在于G中
+    # 初始化存储actors和repos信息的字典
+    actors_info = {}
+    repos_info = {}
 
-        # 添加贡献边
-        actor_id, repo_id = str(row['actor_id']), str(row['repo_id'])
-        weight = determine_contribution_weight(row['type'], row['action'], row['pull_merged'])
-        if weight > 0:
-            # 如果边已存在，更新权重
-            if G.has_edge(actor_id, repo_id):
-                G[actor_id][repo_id]['weight'] += weight
-            else:
-                G.add_edge(actor_id, repo_id, weight=weight, type='contribution')
+    print("开始收集节点信息...")
+    for chunk in pd.read_csv(file_path, chunksize=chunksize,
+                             usecols=['actor_id', 'actor_login', 'repo_id', 'repo_name', 'org_id', 'org_login',
+                                      'created_at']):
+        for _, row in chunk.iterrows():
+            actor_id, repo_id = str(row['actor_id']), str(row['repo_id'])
+            created_at = pd.to_datetime(row['created_at'])
 
-        # 添加引用边
-        mentions, repo_refs = extract_references(row['body'] if pd.notna(row['body']) else "")
-        actor_id_str = str(row['actor_id'])  # 将actor_id转换为字符串
-        # 添加mention边（actor到actor）
-        for mention in mentions:
-            if mention in login_to_actor_id:
-                mentioned_actor_id_str = login_to_actor_id[mention]
-                # 检查是否避免自引用且两个节点都存在于G中
-                if actor_id_str != mentioned_actor_id_str and G.has_node(actor_id_str) and G.has_node(mentioned_actor_id_str):
-                    if G.has_edge(actor_id_str, mentioned_actor_id_str):
-                        G[actor_id_str][mentioned_actor_id_str]['weight'] += 2  # 累计权重
-                    else:
-                        G.add_edge(actor_id_str, mentioned_actor_id_str, weight=2, type='mention')
+            # 更新actor信息，如果这是一个更晚的记录
+            if actor_id not in actors_info or created_at > actors_info[actor_id]['latest']:
+                actors_info[actor_id] = {
+                    'login': row['actor_login'],
+                    'latest': created_at
+                }
 
-        # 添加repo引用边（repo到repo）
-        repo_id_str = str(row['repo_id'])  # 将repo_id转换为字符串
-        for repo_ref in repo_refs:
-            referenced_repo_name = '/'.join(repo_ref.split('/')[-2:])  # 提取完整的repo_name
-            if referenced_repo_name in name_to_repo_id:
-                referenced_repo_id_str = name_to_repo_id[referenced_repo_name]
-                # 检查是否避免自引用且两个节点都存在于G中
-                if repo_id_str != referenced_repo_id_str and G.has_node(repo_id_str) and G.has_node(referenced_repo_id_str):
-                    if G.has_edge(repo_id_str, referenced_repo_id_str):
-                        G[repo_id_str][referenced_repo_id_str]['weight'] += 3  # 累计权重
-                    else:
-                        G.add_edge(repo_id_str, referenced_repo_id_str, weight=3, type='repo_reference')
+            # 更新repo信息，如果这是一个更晚的记录
+            if repo_id not in repos_info or created_at > repos_info[repo_id]['latest']:
+                repos_info[repo_id] = {
+                    'name': row['repo_name'],
+                    'org_id': str(row['org_id']),
+                    'org_login': row['org_login'],
+                    'latest': created_at
+                }
+        print(f"已处理 {chunk.shape[0]} 行数据...")
 
-    print(f"已处理 {chunk.shape[0]} 行数据...")
+    # 创建节点，不包括'latest'属性
+    for actor_id, attrs in actors_info.items():
+        G.add_node(actor_id, type='actor', login=attrs['login'])
 
-contribution_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'contribution')
-mention_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'mention')
-repo_reference_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'repo_reference')
-print(f"总共收集到 {contribution_edges_count} 个 contribution 边、 {mention_edges_count} 个 mention 边和 {repo_reference_edges_count} 个 repo_reference 边。")
+    for repo_id, attrs in repos_info.items():
+        G.add_node(repo_id, type='repo', name=attrs['name'], org_id=attrs['org_id'], org_login=attrs['org_login'])
 
-# # 转换所有属性为字符串类型
-# for node, attr in G.nodes(data=True):
-#     for key in attr:
-#         attr[key] = str(attr[key])
-# for u, v, attr in G.edges(data=True):
-#     for key in attr:
-#         attr[key] = str(attr[key])
+    print(f"总共收集到 {len(actors_info)} 个独特的 actor 节点和 {len(repos_info)} 个独特的 repo 节点。")
 
-# 创建一个新的有向图
-G_new = nx.DiGraph()
+    print("开始处理边的添加...")
+    # 我们需要创建一个从 login 到 actor_id 的映射
+    login_to_actor_id = {info['login']: actor_id for actor_id, info in actors_info.items()}
+    # 我们需要创建一个从 repo_name 到 repo_id 的映射
+    name_to_repo_id = {info['name']: repo_id for repo_id, info in repos_info.items()}
 
-# 复制节点，并使用新的标识符
-for node, data in G.nodes(data=True):
-    if data['type'] == 'actor':
-        # 对于actor节点，使用login作为新的节点id
-        G_new.add_node(data['login'], **data)
-    elif data['type'] == 'repo':
-        # 对于repo节点，使用name作为新的节点id
-        G_new.add_node(data['name'], **data)
+    for chunk in pd.read_csv(file_path, chunksize=chunksize):
+        for index, row in chunk.iterrows():
+            # 在这里添加逻辑来处理每行数据，包括添加贡献类边和引用类边
+            # 确保在添加边之前，边的两端节点都已经存在于G中
 
-# 复制边，并使用新的source和target id
-for source, target, data in G.edges(data=True):
-    source_data = G.nodes[source]
-    target_data = G.nodes[target]
+            # 添加贡献边
+            actor_id, repo_id = str(row['actor_id']), str(row['repo_id'])
+            weight = determine_contribution_weight(row['type'], row['action'], row['pull_merged'])
+            if weight > 0:
+                # 如果边已存在，更新权重
+                if G.has_edge(actor_id, repo_id):
+                    G[actor_id][repo_id]['weight'] += weight
+                else:
+                    G.add_edge(actor_id, repo_id, weight=weight, type='contribution')
 
-    # 根据节点类型确定新的source和target id
-    if source_data['type'] == 'actor':
-        new_source_id = source_data['login']
-    else:
-        new_source_id = source_data['name']
+            # 添加引用边
+            mentions, repo_refs = extract_references(row['body'] if pd.notna(row['body']) else "")
+            actor_id_str = str(row['actor_id'])  # 将actor_id转换为字符串
+            # 添加mention边（actor到actor）
+            for mention in mentions:
+                if mention in login_to_actor_id:
+                    mentioned_actor_id_str = login_to_actor_id[mention]
+                    # 检查是否避免自引用且两个节点都存在于G中
+                    if actor_id_str != mentioned_actor_id_str and G.has_node(actor_id_str) and G.has_node(mentioned_actor_id_str):
+                        if G.has_edge(actor_id_str, mentioned_actor_id_str):
+                            G[actor_id_str][mentioned_actor_id_str]['weight'] += 2  # 累计权重
+                        else:
+                            G.add_edge(actor_id_str, mentioned_actor_id_str, weight=2, type='mention')
 
-    if target_data['type'] == 'actor':
-        new_target_id = target_data['login']
-    else:
-        new_target_id = target_data['name']
+            # 添加repo引用边（repo到repo）
+            repo_id_str = str(row['repo_id'])  # 将repo_id转换为字符串
+            for repo_ref in repo_refs:
+                referenced_repo_name = '/'.join(repo_ref.split('/')[-2:])  # 提取完整的repo_name
+                if referenced_repo_name in name_to_repo_id:
+                    referenced_repo_id_str = name_to_repo_id[referenced_repo_name]
+                    # 检查是否避免自引用且两个节点都存在于G中
+                    if repo_id_str != referenced_repo_id_str and G.has_node(repo_id_str) and G.has_node(referenced_repo_id_str):
+                        if G.has_edge(repo_id_str, referenced_repo_id_str):
+                            G[repo_id_str][referenced_repo_id_str]['weight'] += 3  # 累计权重
+                        else:
+                            G.add_edge(repo_id_str, referenced_repo_id_str, weight=3, type='repo_reference')
 
-    # 在新图中添加边
-    G_new.add_edge(new_source_id, new_target_id, **data)
+        print(f"已处理 {chunk.shape[0]} 行数据...")
 
-# TODO: 找出为什么存在自环边和不属于最大连通子图的节点，然后移出下面的“补救”代码
-# 检查并删除不属于最大连通子图的节点
-weakly_connected_components = list(nx.weakly_connected_components(G_new))
-if len(weakly_connected_components) > 1:
-    largest_component = max(weakly_connected_components, key=len)
-    other_nodes = set(G_new.nodes()) - largest_component
+    contribution_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'contribution')
+    mention_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'mention')
+    repo_reference_edges_count = sum(1 for _, _, edge_data in G.edges(data=True) if edge_data.get('type') == 'repo_reference')
+    print(f"总共收集到 {contribution_edges_count} 个 contribution 边、 {mention_edges_count} 个 mention 边和 {repo_reference_edges_count} 个 repo_reference 边。")
 
-    print("将被删除的不属于最大连通子图的节点有：")
-    for node in other_nodes:
-        print(node)
+    # # 转换所有属性为字符串类型
+    # for node, attr in G.nodes(data=True):
+    #     for key in attr:
+    #         attr[key] = str(attr[key])
+    # for u, v, attr in G.edges(data=True):
+    #     for key in attr:
+    #         attr[key] = str(attr[key])
 
-    # 删除这些节点
-    G_new.remove_nodes_from(other_nodes)
+    # 创建一个新的有向图
+    G_new = nx.DiGraph()
 
-# 检查并删除有自环的节点
-self_loops = list(nx.selfloop_edges(G_new))
-if self_loops:
-    print("将被删除的存在自环的节点有：")
-    for u, _ in self_loops:
-        print(u)
+    # 复制节点，并使用新的标识符
+    for node, data in G.nodes(data=True):
+        if data['type'] == 'actor':
+            # 对于actor节点，使用login作为新的节点id
+            G_new.add_node(data['login'], **data)
+        elif data['type'] == 'repo':
+            # 对于repo节点，使用name作为新的节点id
+            G_new.add_node(data['name'], **data)
 
-    # 删除自环边
-    G_new.remove_edges_from(self_loops)
+    # 复制边，并使用新的source和target id
+    for source, target, data in G.edges(data=True):
+        source_data = G.nodes[source]
+        target_data = G.nodes[target]
 
-    # 如果你也想删除具有自环的节点，取消注释以下代码
-    # self_loop_nodes = {u for u, v in self_loops}
-    # G_new.remove_nodes_from(self_loop_nodes)
+        # 根据节点类型确定新的source和target id
+        if source_data['type'] == 'actor':
+            new_source_id = source_data['login']
+        else:
+            new_source_id = source_data['name']
 
-# 现在G_new已经删除了不属于最大连通子图的节点和有自环的节点（如果你选择删除它们）
+        if target_data['type'] == 'actor':
+            new_target_id = target_data['login']
+        else:
+            new_target_id = target_data['name']
 
-# 现在G_new包含了使用login和name作为id的节点，以及相应更新的边
-# 导出到GML和Pajek格式
-gml_file_path = 'output/repo_actor_network/xlab_ra.gml'
-pajek_file_path = 'output/repo_actor_network/xlab_ra.net'
-# gml_file_path = 'output/repo_actor_network/microsoft_ra.gml'
-# pajek_file_path = 'output/repo_actor_network/microsoft_ra.net'
-nx.write_gml(G_new, gml_file_path)
-nx.write_pajek(G_new, pajek_file_path)
-print("图数据已成功导出。")
+        # 在新图中添加边
+        G_new.add_edge(new_source_id, new_target_id, **data)
+
+    # TODO: 找出为什么存在自环边和不属于最大连通子图的节点，然后移出下面的“补救”代码
+    # 检查并删除不属于最大连通子图的节点
+    weakly_connected_components = list(nx.weakly_connected_components(G_new))
+    if len(weakly_connected_components) > 1:
+        largest_component = max(weakly_connected_components, key=len)
+        other_nodes = set(G_new.nodes()) - largest_component
+
+        print("将被删除的不属于最大连通子图的节点有：")
+        for node in other_nodes:
+            print(node)
+
+        # 删除这些节点
+        G_new.remove_nodes_from(other_nodes)
+
+    # 检查并删除有自环的节点
+    self_loops = list(nx.selfloop_edges(G_new))
+    if self_loops:
+        print("将被删除的存在自环的节点有：")
+        for u, _ in self_loops:
+            print(u)
+
+        # 删除自环边
+        G_new.remove_edges_from(self_loops)
+
+        # 如果你也想删除具有自环的节点，取消注释以下代码
+        # self_loop_nodes = {u for u, v in self_loops}
+        # G_new.remove_nodes_from(self_loop_nodes)
+
+        # 现在G_new已经删除了不属于最大连通子图的节点和有自环的节点（如果你选择删除它们）
+
+        # 导出图数据
+        gml_file_path = f'output/repo_actor_network/{project_name}_ra.gml'
+        pajek_file_path = f'output/repo_actor_network/{project_name}_ra.net'
+        nx.write_gml(G_new, gml_file_path)
+        nx.write_pajek(G_new, pajek_file_path)
+        print("图数据已成功导出。")
+
+process_github_events("xlab")
+# process_github_events("k8s")
+# process_github_events("microsoft")
