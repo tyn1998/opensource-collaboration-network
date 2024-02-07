@@ -48,8 +48,8 @@ def trim_graph_edges(G, max_edges=500000):
         print(f"Graph trimmed to top {max_edges} contribution edges. Removed {len(isolated_nodes)} isolated nodes.")
 
 
-def process_github_events(project_name):
-    file_path = f'input/github_events_{project_name}.csv'
+# generate repo-actor network from GitHub events
+def gen_ra_from_events(events_csv_path):
     chunksize = 10000  # 根据您的内存限制调整
     G = nx.DiGraph()
 
@@ -58,7 +58,7 @@ def process_github_events(project_name):
     repos_info = {}
 
     print("开始收集节点信息...")
-    for chunk in pd.read_csv(file_path, chunksize=chunksize,
+    for chunk in pd.read_csv(events_csv_path, chunksize=chunksize,
                              usecols=['actor_id', 'actor_login', 'repo_id', 'repo_name', 'org_id', 'org_login',
                                       'created_at']):
         for _, row in chunk.iterrows():
@@ -97,7 +97,7 @@ def process_github_events(project_name):
     # 我们需要创建一个从 repo_name 到 repo_id 的映射
     name_to_repo_id = {info['name']: repo_id for repo_id, info in repos_info.items()}
 
-    for chunk in pd.read_csv(file_path, chunksize=chunksize):
+    for chunk in pd.read_csv(events_csv_path, chunksize=chunksize):
         for index, row in chunk.iterrows():
             # 在这里添加逻辑来处理每行数据，包括添加贡献类边和引用类边
             # 确保在添加边之前，边的两端节点都已经存在于G中
@@ -216,16 +216,4 @@ def process_github_events(project_name):
     # 在导出前，根据贡献边的数量进行削减
     trim_graph_edges(G_new)
 
-    # 导出图数据
-    gml_file_path = f'output/repo_actor_network/{project_name}_ra.gml'
-    pajek_file_path = f'output/repo_actor_network/{project_name}_ra.net'
-    nx.write_gml(G_new, gml_file_path)
-    nx.write_pajek(G_new, pajek_file_path)
-    print("图数据已成功导出。")
-
-
-# process_github_events("xlab")
-# process_github_events("k8s_202301")
-# process_github_events("apache_202301")
-process_github_events("microsoft_202301")
-# process_github_events("microsoft")
+    return G_new

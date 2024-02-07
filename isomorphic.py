@@ -28,16 +28,8 @@ def filter_top_edges(G, max=500000):
     return G
 
 
-def build_homogeneous_networks(project_name):
-    input_ra_gml_path = f'output/repo_actor_network/{project_name}_ra.gml'
-    output_rr_gml_path = f'output/repo_repo_network/{project_name}_rr.gml'
-    output_aa_gml_path = f'output/actor_actor_network/{project_name}_aa.gml'
-    output_rr_pajek_path = f'output/repo_repo_network/{project_name}_rr.net'
-    output_aa_pajek_path = f'output/actor_actor_network/{project_name}_aa.net'
-
-    print(f"开始读取异质网络: {input_ra_gml_path}")
-    G = nx.read_gml(input_ra_gml_path)
-
+# 从 repo-actor 异质网络生成两个同质网络 repo-repo 和 actor-actor
+def gen_rr_aa_from_ra(G_ra):
     # 初始化同质图
     G_rr = nx.Graph()  # 使用无向图
     G_aa = nx.Graph()  # 修改为无向图
@@ -45,10 +37,10 @@ def build_homogeneous_networks(project_name):
 
     print("开始构建repo_repo网络...")
     actor_to_repos = {}
-    for u, v, data in G.edges(data=True):
-        if G.nodes[u]['type'] == 'actor' and G.nodes[v]['type'] == 'repo':
+    for u, v, data in G_ra.edges(data=True):
+        if G_ra.nodes[u]['type'] == 'actor' and G_ra.nodes[v]['type'] == 'repo':
             actor_to_repos.setdefault(u, []).append((v, data['weight']))
-        elif G.nodes[u]['type'] == 'repo' and G.nodes[v]['type'] == 'repo':
+        elif G_ra.nodes[u]['type'] == 'repo' and G_ra.nodes[v]['type'] == 'repo':
             base_weight = G_rr.get_edge_data(u, v, default={'weight': 0})['weight']
             G_rr.add_edge(u, v, weight=base_weight + data['weight'])
 
@@ -65,8 +57,8 @@ def build_homogeneous_networks(project_name):
 
     print("开始构建actor_actor网络...")
     actor_to_repo_weights = {}
-    for u, v, data in G.edges(data=True):
-        if G.nodes[u]['type'] == 'actor' and G.nodes[v]['type'] == 'repo':
+    for u, v, data in G_ra.edges(data=True):
+        if G_ra.nodes[u]['type'] == 'actor' and G_ra.nodes[v]['type'] == 'repo':
             actor_to_repo_weights.setdefault(u, {}).setdefault(v, 0)
             actor_to_repo_weights[u][v] += data['weight']
 
@@ -84,20 +76,4 @@ def build_homogeneous_networks(project_name):
         G_aa = filter_top_edges(G_aa, max=500000)
     print("actor_actor网络构建完成。")
 
-    # 保存图到文件
-    print(f"保存repo_repo网络到: {output_rr_gml_path} 和 {output_rr_pajek_path}")
-    nx.write_gml(G_rr, output_rr_gml_path)
-    nx.write_pajek(G_rr, output_rr_pajek_path)
-
-    print(f"保存actor_actor网络到: {output_aa_gml_path} 和 {output_aa_pajek_path}")
-    nx.write_gml(G_aa, output_aa_gml_path)
-    nx.write_pajek(G_aa, output_aa_pajek_path)
-
-    print("所有网络构建完成，并已保存到文件。")
-
-
-# 调用函数示例
-build_homogeneous_networks("microsoft_202301")
-# build_homogeneous_networks("apache_202301")
-# build_homogeneous_networks("k8s_202301")
-# build_homogeneous_networks("xlab")
+    return G_rr, G_aa
