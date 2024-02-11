@@ -57,16 +57,9 @@ for org, files in org_files.items():
         green_print(f'write ra to gml file...')
         nx.write_gml(ra, os.path.join(org_output_dir, f"{file_name[:-4]}_ra.gml"))
 
-        green_print(f'write ra to pajek file...')
-        nx.write_pajek(ra, os.path.join(org_output_dir, f"{file_name[:-4]}_ra.net"))
-
         green_print('Generating rr and aa...')
         rr, aa = gen_rr_aa_from_ra(ra)
 
         green_print(f'write rr and aa to gml file...')
         nx.write_gml(rr, os.path.join(org_output_dir, f"{file_name[:-4]}_rr.gml"))
         nx.write_gml(aa, os.path.join(org_output_dir, f"{file_name[:-4]}_aa.gml"))
-
-        green_print(f'write rr and aa to pajek file...')
-        nx.write_pajek(rr, os.path.join(org_output_dir, f"{file_name[:-4]}_rr.net"))
-        nx.write_pajek(aa, os.path.join(org_output_dir, f"{file_name[:-4]}_aa.net"))
