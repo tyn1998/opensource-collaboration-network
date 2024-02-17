@@ -6,14 +6,18 @@ import re
 
 
 def determine_contribution_weight(event_type, action, pull_merged):
-    weights = {
-        'IssueCommentEvent': 1,
-        'IssuesEvent': 2 if action == 'opened' else 0,
-        'PullRequestEvent': 3 if action == 'opened' else 0,
-        'PullRequestReviewCommentEvent': 4,
-        'PullRequestMerged': 5 if pull_merged == 1 else 0
-    }
-    return weights.get(event_type, 0)
+    if event_type == 'IssueCommentEvent':
+        return 1
+    elif event_type == 'IssuesEvent' and action == 'opened':
+        return 2
+    elif event_type == 'PullRequestEvent':
+        if action == 'opened':
+            return 3
+        elif action == 'closed' and pull_merged:
+            return 5
+    elif event_type == 'PullRequestReviewCommentEvent':
+        return 4
+    return 0
 
 
 def extract_references(body):
