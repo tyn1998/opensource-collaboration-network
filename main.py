@@ -1,8 +1,10 @@
 from heterogeneous import gen_ra_from_events
 from isomorphic import gen_rr_aa_from_ra
+from analyze import stats_from_events_csv, stats_from_gml
 import networkx as nx
 import os
 import argparse  # 导入argparse模块
+import json
 
 
 def green_print(text):
@@ -51,15 +53,29 @@ for org, files in org_files.items():
         org_output_dir = os.path.join(output_dir, org)
         ensure_dir(org_output_dir)
 
-        green_print('Generating ra...')
-        ra = gen_ra_from_events(input_file_path)
+        # green_print('Generating ra...')
+        # ra = gen_ra_from_events(input_file_path)
+        #
+        # green_print(f'write ra to gml file...')
+        # nx.write_gml(ra, os.path.join(org_output_dir, f"{file_name[:-4]}_ra.gml"))
+        #
+        # green_print('Generating rr and aa...')
+        # rr, aa = gen_rr_aa_from_ra(ra)
+        #
+        # green_print(f'write rr and aa to gml file...')
+        # nx.write_gml(rr, os.path.join(org_output_dir, f"{file_name[:-4]}_rr.gml"))
+        # nx.write_gml(aa, os.path.join(org_output_dir, f"{file_name[:-4]}_aa.gml"))
 
-        green_print(f'write ra to gml file...')
-        nx.write_gml(ra, os.path.join(org_output_dir, f"{file_name[:-4]}_ra.gml"))
-
-        green_print('Generating rr and aa...')
-        rr, aa = gen_rr_aa_from_ra(ra)
-
-        green_print(f'write rr and aa to gml file...')
-        nx.write_gml(rr, os.path.join(org_output_dir, f"{file_name[:-4]}_rr.gml"))
-        nx.write_gml(aa, os.path.join(org_output_dir, f"{file_name[:-4]}_aa.gml"))
+        green_print('Generating stats...')
+        stats_events = stats_from_events_csv(input_file_path)
+        with open(os.path.join(org_output_dir, f"{file_name[:-4]}_events_stats.json"), 'w') as f:
+            json.dump(stats_events, f)
+        stats_ra = stats_from_gml(os.path.join(org_output_dir, f"{file_name[:-4]}_ra.gml"))
+        stats_rr = stats_from_gml(os.path.join(org_output_dir, f"{file_name[:-4]}_rr.gml"))
+        stats_aa = stats_from_gml(os.path.join(org_output_dir, f"{file_name[:-4]}_aa.gml"))
+        with open(os.path.join(org_output_dir, f"{file_name[:-4]}_ra_stats.json"), 'w') as f:
+            json.dump(stats_ra, f)
+        with open(os.path.join(org_output_dir, f"{file_name[:-4]}_rr_stats.json"), 'w') as f:
+            json.dump(stats_rr, f)
+        with open(os.path.join(org_output_dir, f"{file_name[:-4]}_aa_stats.json"), 'w') as f:
+            json.dump(stats_aa, f)
